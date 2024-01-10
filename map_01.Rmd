@@ -1,0 +1,89 @@
+---
+title: "Drawing_a_map_in_R"
+author: "iotsuka"
+date: "2024-01-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## geom_sf()で地図を描く
+
+瓜生先生のページを教科書にして、地図を描いてみる。
+geom_polygonではなくgeom_sfを使う。
+
+```{r libraries_needed}
+library(dplyr)
+library(ggplot2)
+library(sf) # 地理空間を扱うためのパッケージ
+library(rnaturalearth) # pablic domainで利用可能な行政地図データ
+```
+
+### Natural Earthから日本のポリゴンを取得
+
+必要なデータをne_jpnに格納。
+
+```{r}
+ne_jpn <- ne_states(country = "Japan",
+                    # retuenclassオプションで返り値のクラス指定
+                    returnclass = "sf") |> 
+  # 使う列だけに絞り込む
+  select(iso_3166_2, gn_name) %>%
+  # as_tibbleだとsfクラスでなくなってしまう
+  # 行数を変えないことを担保
+  tibble::new_tibble(nrow = nrow(.), class = "sf")
+```
+ne_jpnがsfクラスになっていることを確認。
+
+```{r}
+class(ne_jpn)
+```
+
+
+
+### 日本全図
+
+```{r}
+ne_jpn |> 
+  ggplot() + geom_sf()
+```
+
+### 都道府県別選挙結果の地図
+
+```{r 選挙データの用意, echo=FALSE}
+df_shugiin48_party_votes <-
+  readr::read_rds(here::here("data/shugiin48_prefecture_party_votes.rds"))
+```
+
+```{r 縦長に整形, echo=FALSE}
+df_shugiin48_party_votes_long <- 
+  df_shugiin48_party_votes %>% 
+  filter(区分 != "計") %>% 
+  select(prefecture = 区分, ends_with("計")) %>% 
+  select(!starts_with("合計")) %>% 
+  tidyr::pivot_longer(cols = ends_with("計"),
+                      names_to = "party",
+                      values_to = "votes") %>% 
+  mutate(party = stringr::str_remove(party, "_計"),
+         is_ruling = if_else(party %in% c("自由民主党", "公明党"),
+                             TRUE,
+                             FALSE))
+```
+
+```{r 都道府県別第1党}
+df_shugiin48_party_votes_tops <- df_shugiin48_party_votes_long %>% 
+  group_by(prefecture) %>% 
+  mutate(prop = votes / sum(votes, na.rm = TRUE) * 100) %>% 
+  top_n(n = 1, wt = prop) %>% 
+  ungroup()
+```
+
+
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
